@@ -1,107 +1,102 @@
 #!/usr/bin/env python3
-# rplidar_osc_app.py
-# GUIでRPLIDAR A1→OSC送信（3分割） macOS/Windows 両対応
+# rplidar_osc_app.py - 純Tk版（ttk不使用・確実に見えるUI）
 # pip install rplidar python-osc pyserial
 
-import threading
-import time
-import sys
-import tkinter as tk
-from tkinter import ttk, messagebox
-
+import sys, time, threading, tkinter as tk
+from tkinter import messagebox
 from pythonosc.udp_client import SimpleUDPClient
 from serial.tools import list_ports
 
-# rplidarはプラットフォームによってはhidのoptional依存が噛むことがあります。
-# インポート失敗時にメッセージを出すようにしています。
 try:
     from rplidar import RPLidar
 except Exception as e:
-    raise RuntimeError("rplidar ライブラリの読み込みに失敗しました。`pip install rplidar` を実行してください。") from e
+    raise RuntimeError("rplidar の読み込みに失敗。`pip install rplidar` を実行してください。") from e
 
-
-APP_TITLE = "RPLIDAR → OSC Sender"
+APP_TITLE = "RPLIDAR → OSC Sender (pure Tk)"
 DEFAULT_OSC_HOST = "127.0.0.1"
 DEFAULT_OSC_PORT = 8000
-FPS = 10  # 送信フレームレート
+FPS = 10
 BAUD = 115200
 
+BG = "#f4f4f4"
+FG = "#000000"
+
 class LidarSenderApp:
-    def __init__(self, master):
-        self.master = master
-        master.title(APP_TITLE)
-        master.geometry("520x260")
+    def __init__(self, root):
+        self.root = root
+        root.title(APP_TITLE)
+        root.geometry("620x360")
+        root.configure(bg=BG)
 
         self.running = False
         self.thread = None
         self.lidar = None
 
-        # Widgets
-        row = 0
+        # 上段：設定
+        top = tk.Frame(root, bg=BG)
+        top.pack(fill="x", padx=10, pady=10)
 
-        ttk.Label(master, text="Serial Port:").grid(row=row, column=0, sticky="e", padx=8, pady=8)
-        self.port_combo = ttk.Combobox(master, width=40, state="readonly")
-        self.port_combo.grid(row=row, column=1, columnspan=2, sticky="w", padx=8, pady=8)
+        row1 = tk.Frame(top, bg=BG); row1.pack(fill="x", pady=4)
+        tk.Label(row1, text="Serial Port:", width=12, bg=BG, fg=FG).pack(side="left")
+        self.port_var = tk.StringVar()
+        self.port_menu = tk.OptionMenu(row1, self.port_var, [])
+        self.port_menu.configure(bg="white")
+        self.port_menu.pack(side="left", padx=6)
+        tk.Button(row1, text="Refresh", command=self.refresh_ports).pack(side="left", padx=6)
 
-        self.refresh_btn = ttk.Button(master, text="Refresh", command=self.refresh_ports)
-        self.refresh_btn.grid(row=row, column=3, sticky="w", padx=4, pady=8)
-
-        row += 1
-        ttk.Label(master, text="OSC Host:").grid(row=row, column=0, sticky="e", padx=8, pady=4)
+        row2 = tk.Frame(top, bg=BG); row2.pack(fill="x", pady=4)
+        tk.Label(row2, text="OSC Host:", width=12, bg=BG, fg=FG).pack(side="left")
         self.host_var = tk.StringVar(value=DEFAULT_OSC_HOST)
-        self.host_entry = ttk.Entry(master, textvariable=self.host_var, width=20)
-        self.host_entry.grid(row=row, column=1, sticky="w", padx=8, pady=4)
+        tk.Entry(row2, textvariable=self.host_var, width=18).pack(side="left", padx=6)
+        tk.Label(row2, text="OSC Port:", bg=BG, fg=FG).pack(side="left", padx=(12,4))
+        self.osc_port_var = tk.StringVar(value=str(DEFAULT_OSC_PORT))
+        tk.Entry(row2, textvariable=self.osc_port_var, width=8).pack(side="left")
 
-        ttk.Label(master, text="OSC Port:").grid(row=row, column=2, sticky="e", padx=8, pady=4)
-        self.port_var = tk.StringVar(value=str(DEFAULT_OSC_PORT))
-        self.osc_port_entry = ttk.Entry(master, textvariable=self.port_var, width=8)
-        self.osc_port_entry.grid(row=row, column=3, sticky="w", padx=8, pady=4)
+        row3 = tk.Frame(top, bg=BG); row3.pack(fill="x", pady=8)
+        self.start_btn = tk.Button(row3, text="Start", command=self.start)
+        self.stop_btn  = tk.Button(row3, text="Stop",  command=self.stop, state="disabled")
+        self.start_btn.pack(side="left")
+        self.stop_btn.pack(side="left", padx=8)
 
-        row += 1
-        self.start_btn = ttk.Button(master, text="Start", command=self.start)
-        self.start_btn.grid(row=row, column=1, sticky="e", padx=8, pady=12)
-        self.stop_btn = ttk.Button(master, text="Stop", command=self.stop, state="disabled")
-        self.stop_btn.grid(row=row, column=2, sticky="w", padx=8, pady=12)
+        # ログ
+        log_frame = tk.LabelFrame(root, text="Status", bg=BG, fg=FG)
+        log_frame.pack(fill="both", expand=True, padx=10, pady=(0,10))
+        self.log_text = tk.Text(log_frame, height=10, bg="white", fg="black")
+        self.log_text.pack(fill="both", expand=True, padx=6, pady=6)
 
-        row += 1
-        ttk.Label(master, text="Status:").grid(row=row, column=0, sticky="ne", padx=8, pady=4)
-        self.status_text = tk.Text(master, height=6, width=60, state="disabled")
-        self.status_text.grid(row=row, column=1, columnspan=3, sticky="w", padx=8, pady=4)
-
-        # 初回ポート列挙
         self.refresh_ports()
+        self.log(f"[INFO] UI initialized. Python={sys.version.split()[0]}, Tk={root.tk.eval('info patchlevel')}")
+        root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # 終了ハンドラ
-        master.protocol("WM_DELETE_WINDOW", self.on_close)
+    def _set_optionmenu_items(self, menu_widget, var, items):
+        menu = menu_widget["menu"]
+        menu.delete(0, "end")
+        for it in items:
+            menu.add_command(label=it, command=lambda v=it: var.set(v))
+        if items:
+            var.set(items[0])
+        else:
+            var.set("")
 
     def log(self, s):
-        self.status_text.configure(state="normal")
-        self.status_text.insert("end", s + "\n")
-        self.status_text.see("end")
-        self.status_text.configure(state="disabled")
+        self.log_text.insert("end", s + "\n")
+        self.log_text.see("end")
 
     def refresh_ports(self):
-        ports = list_ports.comports()
-        items = [p.device for p in ports]
-        # 代表例：mac: /dev/tty.usbserial-0001, Win: COM3
-        self.port_combo["values"] = items
-        if items:
-            self.port_combo.current(0)
+        items = [p.device for p in list_ports.comports()]
+        self._set_optionmenu_items(self.port_menu, self.port_var, items)
         self.log(f"[INFO] Found ports: {items if items else 'None'}")
 
     def start(self):
-        if self.running:
-            return
-        port = self.port_combo.get()
+        if self.running: return
+        port = self.port_var.get()
         if not port:
-            messagebox.showerror("Error", "シリアルポートが選択されていません。")
-            return
+            messagebox.showerror("Error", "シリアルポートが選択されていません。"); return
         try:
-            osc_port = int(self.port_var.get())
+            osc_port = int(self.osc_port_var.get())
         except ValueError:
-            messagebox.showerror("Error", "OSCポート番号が不正です。")
-            return
-        host = self.host_var.get().strip() or DEFAULT_OSC_HOST
+            messagebox.showerror("Error", "OSCポート番号が不正です。"); return
+        host = (self.host_var.get() or DEFAULT_OSC_HOST).strip()
 
         self.running = True
         self.start_btn.configure(state="disabled")
@@ -118,7 +113,7 @@ class LidarSenderApp:
 
     def _worker(self, serial_port, host, osc_port):
         self.log(f"[INFO] Opening {serial_port} @ {BAUD}, sending OSC to {host}:{osc_port}")
-        scan_data = [0.0] * 360
+        scan_data = [0.0]*360
         last = time.time()
 
         try:
@@ -127,28 +122,23 @@ class LidarSenderApp:
             self.log("[INFO] Connected to RPLIDAR.")
 
             for _, _, angle, distance in self.lidar.iter_measurments():
-                if not self.running:
-                    break
-                a = int(angle) % 360
-                scan_data[a] = float(distance)  # mm
+                if not self.running: break
+                scan_data[int(angle) % 360] = float(distance)
                 now = time.time()
                 if now - last > 1.0 / FPS:
-                    # 120本×3分割 [start, d0..d119]
                     for start in (0, 120, 240):
-                        segment = scan_data[start:start+120]
-                        client.send_message("/rplidar/scan", [start] + segment)
+                        client.send_message("/rplidar/scan", [start] + scan_data[start:start+120])
                     last = now
 
         except Exception as e:
             self.log(f"[ERROR] {e}")
-            messagebox.showerror("Error", str(e))
+            try: messagebox.showerror("Error", str(e))
+            except Exception: pass
         finally:
             try:
                 if self.lidar:
-                    self.lidar.stop()
-                    self.lidar.disconnect()
-            except Exception:
-                pass
+                    self.lidar.stop(); self.lidar.disconnect()
+            except Exception: pass
             self.lidar = None
             self.running = False
             self.stop_btn.configure(state="disabled")
@@ -157,21 +147,12 @@ class LidarSenderApp:
 
     def on_close(self):
         self.stop()
-        # スレッド終了待ち（短時間）
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
-        self.master.destroy()
-
+        self.root.destroy()
 
 def main():
     root = tk.Tk()
-    # macのダークモード等で見辛い場合はテーマ指定も可
-    try:
-        style = ttk.Style()
-        if sys.platform == "darwin":
-            style.theme_use("aqua")
-    except Exception:
-        pass
     app = LidarSenderApp(root)
     root.mainloop()
 
