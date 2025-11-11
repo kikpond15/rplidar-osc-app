@@ -16,7 +16,7 @@ Ready for Processing / Max / TouchDesigner / Unity. Ships frames as 3×120 sampl
 
 # 🎥 Demo
 <p align="center">
-  <img src="docs/demo.gif" alt="RPLIDAR OSC Demo" width="800">
+  <img src="docs/demo720.gif" alt="RPLIDAR OSC Demo" width="800">
 </p>
 
 
