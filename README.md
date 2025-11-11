@@ -15,7 +15,11 @@ Ready for Processing / Max / TouchDesigner / Unity. Ships frames as 3×120 sampl
 - Viewer included: minimal Processing oscP5 sketch
 
 # 🎥 Demo
-<video src="docs/demo720.mp4" width="800" autoplay loop muted playsinline></video>
+<video width="800" controls muted loop playsinline>
+  <source src="docs/demo.mp4" type="video/mp4">
+  Sorry, your browser doesn't support embedded videos. 
+  <a href="docs/demo.mp4">Download the demo video</a>
+</video>
 
 
 # 📦 Repository Layout
