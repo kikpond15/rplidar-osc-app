@@ -1,183 +1,141 @@
-RPLIDAR A1 → OSC（Python） → 可視化（Processing）
+# 🛰️ RPLIDAR → OSC Sender
 
-RPLIDAR A1 を Python で読み取り、OSC で配信。Processing 側で受信・可視化します。
-UDP/OSC を 3 分割送信してバッファあふれを回避する構成です。
+Read RPLIDAR A1 via Python and broadcast frames over OSC/UDP.
+Ready for Processing / Max / TouchDesigner / Unity. Ships frames as 3×120 samples to avoid UDP buffer overflow.
 
-動作確認環境
+<p align="left"> <img alt="macOS" src="https://img.shields.io/badge/macOS-12%2B-000?logo=apple&logoColor=white"> <img alt="Python" src="https://img.shields.io/badge/Python-3.9–3.12-3776AB?logo=python&logoColor=white"> <img alt="License" src="https://img.shields.io/badge/License-MIT-05b64e"> </p>
 
-macOS 10.15.7（Intel）
 
-RPLIDAR A1（USB ドングル）
+# ✨ Features
 
-Python 3.9（仮想環境）
+- One-click streaming: pick serial port → Start
+- Robust OSC: /rplidar/scan with [start, d0..d119] × 3 (millimeters)
+- Stable over UDP: avoids oversized datagrams
+- Cross-platform: macOS .app, Windows .exe build recipes
+- Viewer included: minimal Processing oscP5 sketch
 
-Processing 4.x + oscP5 ライブラリ
+# 🎥 Demo
+<video src="docs/demo720.mp4" width="800" autoplay loop muted playsinline></video>
 
-注：Apple Silicon / 新しい macOS でも基本同様です。ドライバ（CH340/CP210x）が必要な場合があります。
 
-1. ファイル構成
-rplidar-osc/
-├─ sender/                      # 送信（Python）
-│  ├─ rplidar_osc.py
-│  └─ requirements.txt
-└─ receiver/                    # 受信（Processing）
-   └─ RPLidarOscViewer.pde
+# 📦 Repository Layout
+```bash
+rplidar-osc-app/
+├─ src/
+│  └─ rplidar_osc_app.py      # GUI sender (pure Tk version)
+├─ receiver/
+│  └─ RPLidarOscViewer.pde    # Processing viewer (oscP5)
+├─ icons/
+│  ├─ app.icns                # mac icon (optional)
+│  └─ app.ico                 # win icon (optional)
+├─ requirements.txt
+└─ README.md
+```
 
-2. 準備（共通）
-2.1 Homebrew（未導入なら）
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-# インテルMac例（必要なら）
-echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.zprofile
-eval "$(/usr/local/bin/brew shellenv)"
-brew --version
+# ⚡ Quick Start (Binary)
 
-2.2 Python（任意）
+1. Connect RPLIDAR A1 via USB (motor should spin).
+2. Launch app:
+   - macOS: RPLidarOSC.app (first run: right-click → Open)
+   - Windows: RPLidarOSC.exe
+3. Select Serial Port (e.g., /dev/tty.usbserial-0001 or COM3).
+4. Confirm OSC Host/Port (default 127.0.0.1:8000).
+5. Click Start and receive /rplidar/scan on your target app.
 
-macOS の python3 でOK。Homebrew で入れ直す場合は brew install python。
+# 🛠️ Run from Source
+```bash
+git clone <YOUR_REPO_URL> rplidar-osc-app
+cd rplidar-osc-app
 
-2.3 仮想環境（推奨）
-# リポジトリを任意の場所へ展開した想定
-cd rplidar-osc/sender
-
-python3 -m venv .venv
+python -m venv .venv
+# mac/linux
 source .venv/bin/activate
+# windows (powershell)
+# .\.venv\Scripts\Activate.ps1
 
-# 依存導入
 pip install --upgrade pip
 pip install -r requirements.txt
 
+python src/rplidar_osc_app.py
+```
 
-requirements.txt（同梱）：
-
+requirements.txt
+```
 rplidar
 python-osc
 pyserial
-
-3. RPLIDAR の接続
-
-付属USBドングルに A1 を接続（USB と 5V 給電）。
-
-モータが回転すれば通電OK。
-
-デバイス名を確認：
-
-ls /dev/tty.usb* /dev/cu.usb* 2>/dev/null
-# 例: /dev/tty.usbserial-0001
+```
+On macOS: if you see Tk deprecation warnings, set export TK_SILENCE_DEPRECATION=1.
+If the UI appears blank on some mac setups, use the pure Tk app (included) or install the python.org build (ships Tk 8.6).
 
 
-何も出ない場合は USB-シリアルドライバ（CH340/CP210x）を導入してください。
+# 🧪 Processing Viewer (oscP5)
 
-4. 送信（Python / OSC）
+```java
+// Minimal receiver: collects 3 segments into 360 samples
+import oscP5.*;
+OscP5 osc; float[] scan=new float[360]; boolean hasFrame=false;
 
-sender/rplidar_osc.py（同梱）の実行方法：
-
-cd rplidar-osc/sender
-source .venv/bin/activate
-python rplidar_osc.py /dev/tty.usbserial-0001 8000
-
-
-第1引数：RPLIDAR のシリアルポート（環境に合わせて）
-
-第2引数：OSC送信ポート（デフォルト 8000）
-
-4.1 スクリプトのポイント（すでに反映済み）
-
-RPLidar(serial, baudrate=115200, timeout=3) の正しい引数順
-
-/rplidar/scan を 120本×3分割で送信（[start, d0..d119] 形式）
-
-5. 受信・可視化（Processing）
-5.1 ライブラリ導入
-
-Processing を起動 → Sketch > Import Library > Add Library… → oscP5 をインストール。
-
-5.2 スケッチ実行
-
-receiver/RPLidarOscViewer.pde を開いて実行。
-デフォルトで ポート 8000 をリッスンします。
-
-受信データ：
-
-旧仕様互換：/rplidar/scan に float[360]（未使用でも受信可）
-
-分割仕様：/rplidar/scan に [start, d0..d119] で 3 回/フレーム
-
-表示操作：[/] スケール、{/} 最大距離、</> 最小距離
-
-6. まずは動作確認
-
-Python 送信を先に起動
-
-cd rplidar-osc/sender
-source .venv/bin/activate
-python rplidar_osc.py /dev/tty.usbserial-0001 8000
-# Connected などが表示される
+void setup(){ size(900,900); osc=new OscP5(this,8000); }
+void draw(){
+  background(0); translate(width/2,height/2); stroke(60); noFill();
+  for(int m=1;m<=3;m++) circle(0,0,240*m); // meter-ish rings
+  if(hasFrame){ stroke(255);
+    for(int a=0;a<360;a++){
+      float d=scan[a]; if(d<100||d>6000) continue;
+      float r=(d/1000.0)*120; point(r*cos(radians(a)), r*sin(radians(a)));
+    }
+  }
+}
+void oscEvent(OscMessage m){
+  if(!m.checkAddrPattern("/rplidar/scan")) return;
+  int argc = m.arguments().length; if(argc<2) return;
+  int start = (int)m.get(0).floatValue();
+  for(int i=1;i<argc;i++){ int idx=start+(i-1); if(0<=idx&&idx<360) scan[idx]=m.get(i).floatValue(); }
+  if(start>=240) hasFrame=true;
+}
+```
 
 
-Processing 受信を起動
-点群が出ればOK。
+# 📡 OSC Message Format
 
-7. トラブルシューティング
-7.1 Python 側で接続エラー
+- Address: /rplidar/scan
+- Args: [start, d0, d1, …, d119] (mm, float preferred; int ok)
+   - start ∈ {0, 120, 240}
+   - 3 messages compose one 360-sample frame
+- Client hint: reconstruct with scan[start+i] = d[i].
 
-ポート名ミス：ls /dev/tty.usb* /dev/cu.usb* で再確認
+# 🏗️ Build Binaries (PyInstaller)
+## macOS (.app)
+```bash
+pip install pyinstaller
+pyinstaller --name "RPLidarOSC" --windowed --onefile \
+  --icon icons/app.icns \
+  src/rplidar_osc_app.py
 
-ドライバ未導入：CH340/CP210x を導入
+# zip for release
+cd dist && zip -r RPLidarOSC-mac.zip RPLidarOSC.app
+```
 
-他アプリが掴んでいる：他のターミナルやツールを終了
+# 🚀 Release on GitHub (Manual)
 
-7.2 ValueError: invalid literal for int() with base 10: '/dev/tty...'
+1. Create tag, e.g. v0.1.0 and push it.
+2. Releases → Draft a new release.
+3. Upload RPLidarOSC-mac.zip and/or RPLidarOSC.exe as assets → Publish.
+(Want auto-build on tag push? Add a GitHub Actions workflow. I can provide a ready-to-use YAML.)
 
-RPLidar(None, serial, ...) の誤用。必ず RPLidar(serial, baudrate=115200, timeout=3) に。
+# 🧯 Troubleshooting
 
-7.3 Processing コンソールに
+- No serial port listed → install USB-serial driver (CH340/CP210x), try another cable/port.
+- Processing ArrayIndexOutOfBounds → don’t send 360 in one packet; this app uses 3×120.
+- Type errors on receive → handle both float/int by typetag or cast robustly.
+- mac UI blank → pure Tk app / theme_use("clam") with explicit colors / python.org Python.
 
-ArrayIndexOutOfBoundsException / UdpServer.run()
+🗺️ Roadmap
+-  Persist last used serial/host/port
+-  FPS & range controls in UI
+-  Sector minima streams (/rplidar/min/{left,center,right})
+-  GitHub Actions: build & attach assets per tag
 
-1パケットが大きすぎ。**分割送信（本READMEの構成）**を使う。
-
-OscProperties#setDatagramSize(4096) で緩和できる場合もありますが、UDP安定性の観点から分割推奨。
-
-7.4 InvocationTargetException / oscEvent
-
-型/長さの想定がズレたときに発生。受信コードはtypetagで型吸収するようになっています（同梱版OK）。
-
-デバッグ用に：
-
-println("[OSC] addr=", m.addrPattern(), "typetag=", m.typetag(), "argc=", (m.arguments()!=null?m.arguments().length:-1));
-
-7.5 距離が0のまま / 点が出ない
-
-近すぎ/遠すぎ：minDist / maxDist を調整
-
-回転していない：配線・給電確認（モータ回転/LED）
-
-8. 送信フォーマット仕様
-
-アドレス：/rplidar/scan
-
-3回/フレーム送信（各120本）
-
-引数：[start, d0, d1, ... d119]
-
-start：0 / 120 / 240 のいずれか（開始インデックス、度単位）
-
-dN：距離（mm、float推奨／intでも可）
-
-受信側は start に基づいて scan[start + i] = d[i] として 360 本を復元。
-
-9. 拡張アイデア
-
-軽量化：mm → cm×10 の int16 化、Blob送信
-
-フィルタ：移動平均/中央値でチラつき低減
-
-機能：セクタごとの最小距離 /rplidar/min/{left,center,right}、閾値内侵入時 /rplidar/hit など
-
-他アプリ：Max/MSP、TouchDesigner、Unity、openFrameworks 受信サンプル
-
-10. ライセンス・出典
-
-Python ライブラリ：rplidar（Roboticia）/ python-osc / pyserial
-
-Processing ライブラリ：oscP5
+# 📜 License
+MIT © kikpond15
