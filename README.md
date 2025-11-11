@@ -15,11 +15,9 @@ Ready for Processing / Max / TouchDesigner / Unity. Ships frames as 3×120 sampl
 - Viewer included: minimal Processing oscP5 sketch
 
 # 🎥 Demo
-<video width="800" controls muted loop playsinline>
-  <source src="docs/demo720.mp4" type="video/mp4">
-  Sorry, your browser doesn't support embedded videos. 
-  <a href="docs/demo720.mp4">Download the demo video</a>
-</video>
+<p align="center">
+  <img src="docs/demo.gif" alt="RPLIDAR OSC Demo" width="800">
+</p>
 
 
 # 📦 Repository Layout
