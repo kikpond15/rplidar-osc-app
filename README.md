@@ -16,9 +16,9 @@ Ready for Processing / Max / TouchDesigner / Unity. Ships frames as 3×120 sampl
 
 # 🎥 Demo
 <video width="800" controls muted loop playsinline>
-  <source src="docs/demo.mp4" type="video/mp4">
+  <source src="docs/demo720.mp4" type="video/mp4">
   Sorry, your browser doesn't support embedded videos. 
-  <a href="docs/demo.mp4">Download the demo video</a>
+  <a href="docs/demo720.mp4">Download the demo video</a>
 </video>
 
 
